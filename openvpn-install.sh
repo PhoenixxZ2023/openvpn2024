@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# https://github.com/PhoenixxZ2023/openvpn2024/openvpn-install
+# https://github.com/Nyr/openvpn-install
 #
 # Copyright (c) 2013 Nyr. Released under the MIT License.
 
@@ -38,8 +38,8 @@ Supported distros are Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS and Fedora.
 	exit
 fi
 
-if [[ "$os" == "ubuntu" && "$os_version" -lt 2004 ]]; then
-	echo "Ubuntu 20.04 or higher is required to use this installer.
+if [[ "$os" == "ubuntu" && "$os_version" -lt 2204 ]]; then
+	echo "Ubuntu 22.04 or higher is required to use this installer.
 This version of Ubuntu is too old and unsupported."
 	exit
 fi
@@ -125,7 +125,7 @@ if [[ ! -e /etc/openvpn/server/server.conf ]]; then
 		[[ -z "$ip_number" ]] && ip_number="1"
 		ip=$(ip -4 addr | grep inet | grep -vE '127(\.[0-9]{1,3}){3}' | cut -d '/' -f 1 | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' | sed -n "$ip_number"p)
 	fi
-	# If $ip is a private IP address, the server must be behind NAT
+	# If $ip is a private IP address, the server must be behind NAT
 	if echo "$ip" | grep -qE '^(10\.|172\.1[6789]\.|172\.2[0-9]\.|172\.3[01]\.|192\.168)'; then
 		echo
 		echo "This server is behind NAT. What is the public IPv4 address or hostname?"
@@ -190,7 +190,7 @@ if [[ ! -e /etc/openvpn/server/server.conf ]]; then
 	echo "   4) OpenDNS"
 	echo "   5) Quad9"
 	echo "   6) AdGuard"
-	read -p "DNS server [1]: " dns
+	read -p "DNS Google [2]: " dns
 	until [[ -z "$dns" || "$dns" =~ ^[1-6]$ ]]; do
 		echo "$dns: invalid selection."
 		read -p "DNS Google [2]: " dns
@@ -237,7 +237,7 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
 		systemctl enable --now firewalld.service
 	fi
 	# Get easy-rsa
-	easy_rsa_url="https://github.com/PhoenixxZ2023/openvpn2024/master/EasyRSA-3.2.0.tgz"
+	easy_rsa_url='https://github.com/OpenVPN/easy-rsa/releases/download/v3.2.0/EasyRSA-3.2.0.tgz'
 	mkdir -p /etc/openvpn/server/easy-rsa/
 	{ wget -qO- "$easy_rsa_url" 2>/dev/null || curl -sL "$easy_rsa_url" ; } | tar xz -C /etc/openvpn/server/easy-rsa/ --strip-components 1
 	chown -R root:root /etc/openvpn/server/easy-rsa/
@@ -430,13 +430,13 @@ verb 3" > /etc/openvpn/server/client-common.txt
 	echo "New clients can be added by running this script again."
 else
 	clear
-	echo "MENU OPENVPN-2024"
+	echo "OpenVPN is already installed."
 	echo
 	echo "Select an option:"
-	echo "   1) ADCIONAR CLINTE"
-	echo "   2) REMOVER CLIENTE"
-	echo "   3) REMOVER OPENVPN"
-	echo "   4) SAIR"
+	echo "   1) Add a new client"
+	echo "   2) Revoke an existing client"
+	echo "   3) Remove OpenVPN"
+	echo "   4) Exit"
 	read -p "Option: " option
 	until [[ "$option" =~ ^[1-4]$ ]]; do
 		echo "$option: invalid selection."
