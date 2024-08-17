@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# https://github.com/Nyr/openvpn-install
+# https://github.com/PhoenixxZ2023/openvpn2024/openvpn-install
 #
 # Copyright (c) 2013 Nyr. Released under the MIT License.
 
@@ -38,8 +38,8 @@ Supported distros are Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS and Fedora.
 	exit
 fi
 
-if [[ "$os" == "ubuntu" && "$os_version" -lt 2204 ]]; then
-	echo "Ubuntu 22.04 or higher is required to use this installer.
+if [[ "$os" == "ubuntu" && "$os_version" -lt 2004 ]]; then
+	echo "Ubuntu 20.04 or higher is required to use this installer.
 This version of Ubuntu is too old and unsupported."
 	exit
 fi
@@ -430,13 +430,13 @@ verb 3" > /etc/openvpn/server/client-common.txt
 	echo "New clients can be added by running this script again."
 else
 	clear
-	echo "OpenVPN is already installed."
+	echo "MENU OPENVPN-2024"
 	echo
 	echo "Select an option:"
-	echo "   1) Add a new client"
-	echo "   2) Revoke an existing client"
-	echo "   3) Remove OpenVPN"
-	echo "   4) Exit"
+	echo "   1) ADCIONAR CLINTE"
+	echo "   2) REMOVER CLIENTE"
+	echo "   3) REMOVER OPENVPN"
+	echo "   4) SAIR"
 	read -p "Option: " option
 	until [[ "$option" =~ ^[1-4]$ ]]; do
 		echo "$option: invalid selection."
