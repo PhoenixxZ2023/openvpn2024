@@ -159,8 +159,8 @@ if [[ ! -e /etc/openvpn/server/server.conf ]]; then
 	fi
 	echo
 	echo "Which protocol should OpenVPN use?"
-	echo "   1) UDP (recommended)"
-	echo "   2) TCP"
+	echo "   1) TCP (recommended)"
+	echo "   2) UDP"
 	read -p "Protocol [1]: " protocol
 	until [[ -z "$protocol" || "$protocol" =~ ^[12]$ ]]; do
 		echo "$protocol: invalid selection."
@@ -168,10 +168,10 @@ if [[ ! -e /etc/openvpn/server/server.conf ]]; then
 	done
 	case "$protocol" in
 		1|"") 
-		protocol=udp
+		protocol=tcp
 		;;
 		2) 
-		protocol=tcp
+		protocol=udp
 		;;
 	esac
 	echo
@@ -237,7 +237,7 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
 		systemctl enable --now firewalld.service
 	fi
 	# Get easy-rsa
-	easy_rsa_url='https://github.com/OpenVPN/easy-rsa/releases/download/v3.2.0/EasyRSA-3.2.0.tgz'
+	easy_rsa_url=wget -O ~/EasyRSA-3.2.0.tgz "https://raw.githubusercontent.com/PhoenixxZ2023/PLUS/main/Install/EasyRSA-3.2.0.tgz"
 	mkdir -p /etc/openvpn/server/easy-rsa/
 	{ wget -qO- "$easy_rsa_url" 2>/dev/null || curl -sL "$easy_rsa_url" ; } | tar xz -C /etc/openvpn/server/easy-rsa/ --strip-components 1
 	chown -R root:root /etc/openvpn/server/easy-rsa/
