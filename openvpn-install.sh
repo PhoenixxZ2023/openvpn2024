@@ -38,8 +38,8 @@ Supported distros are Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS and Fedora.
 	exit
 fi
 
-if [[ "$os" == "ubuntu" && "$os_version" -lt 2204 ]]; then
-	echo "Ubuntu 22.04 or higher is required to use this installer.
+if [[ "$os" == "ubuntu" && "$os_version" -lt 2004 ]]; then
+	echo "Ubuntu 20.04 or higher is required to use this installer.
 This version of Ubuntu is too old and unsupported."
 	exit
 fi
