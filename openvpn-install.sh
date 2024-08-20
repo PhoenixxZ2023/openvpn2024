@@ -112,11 +112,16 @@ add_client() {
   ./easyrsa sign-req client "${CLIENT_NAME}"
   mkdir -p /etc/openvpn/clients
   cp "pki/issued/${CLIENT_NAME}.crt" "pki/private/${CLIENT_NAME}.key" "pki/ca.crt" /etc/openvpn/clients/
+  
+  # Obter o IP público da VPS
+  SERVER_IP=$(curl -s ifconfig.me)
+  
+  # Gerar o arquivo de configuração .ovpn
   cat <<EOF > /etc/openvpn/clients/${CLIENT_NAME}.ovpn
 client
 dev tun
 proto ${PROTOCOL}
-remote YOUR_SERVER_IP ${PORT}
+remote ${SERVER_IP} ${PORT}
 resolv-retry infinite
 nobind
 persist-key
@@ -134,6 +139,7 @@ $(cat /etc/openvpn/clients/${CLIENT_NAME}.crt)
 $(cat /etc/openvpn/clients/${CLIENT_NAME}.key)
 </key>
 EOF
+
   echo "Cliente ${CLIENT_NAME} adicionado com sucesso!"
 }
 
@@ -237,215 +243,47 @@ install_openvpn() {
   apt-get update
   apt-get install -y wget tar openssl openvpn
 
-  # Baixar e extrair o EasyRSA
-  echo "Baixando EasyRSA versão ${EASYRSA_VERSION}..."
-  if wget -qO "${EASYRSA_FILE}" "${EASYRSA_URL}"; then
-    echo "EasyRSA baixado com sucesso."
-  else
-    echo "Erro ao baixar EasyRSA. Verifique sua conexão e tente novamente."
-    exit 1
-  fi
+  # Download e instalação do EasyRSA
+  cd /etc/openvpn || exit
+  wget -O ${EASYRSA_FILE} ${EASYRSA_URL}
+  tar xzf ${EASYRSA_FILE}
+  cd ${EASYRSA_DIR} || exit
 
-  echo "Extraindo EasyRSA..."
-  if tar xzf "${EASYRSA_FILE}"; then
-    echo "EasyRSA extraído com sucesso."
-  else
-    echo "Erro ao extrair EasyRSA."
-    exit 1
-  fi
-
-  # Mover o EasyRSA para /etc/openvpn/
-  mv "${EASYRSA_DIR}" /etc/openvpn/
-
-  # Configurando o EasyRSA
-  cd /etc/openvpn/${EASYRSA_DIR} || exit
-  echo "Inicializando a PKI..."
+  # Configuração do EasyRSA
   ./easyrsa init-pki
-
-  echo "Criando uma nova CA..."
   ./easyrsa build-ca nopass
-
-  echo "Gerando chave e certificado para o servidor OpenVPN..."
   ./easyrsa gen-req server nopass
   ./easyrsa sign-req server server
-
-  echo "Gerando Diffie-Hellman para troca de chaves..."
   ./easyrsa gen-dh
+  openvpn --genkey --secret ta.key
 
-  echo "Copiando certificados e chaves para a pasta do OpenVPN..."
-  cp pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
-
-  # Criar arquivo de configuração do OpenVPN
-  echo "Gerando arquivo de configuração do OpenVPN para a porta ${PORT}..."
+  # Configuração do OpenVPN
+  cd /etc/openvpn || exit
   cat <<EOF > /etc/openvpn/server.conf
 port ${PORT}
 proto ${PROTOCOL}
 dev tun
-ca ca.crt
-cert server.crt
-key server.key
-dh dh.pem
-server 10.8.0.0 255.255.255.0
-ifconfig-pool-persist ipp.txt
-push "redirect-gateway def1 bypass-dhcp"
-push "dhcp-option DNS ${DNS}"
-keepalive 10 120
+ca /etc/openvpn/${EASYRSA_DIR}/pki/ca.crt
+cert /etc/openvpn/${EASYRSA_DIR}/pki/issued/server.crt
+key /etc/openvpn/${EASYRSA_DIR}/pki/private/server.key
+dh /etc/openvpn/${EASYRSA_DIR}/pki/dh.pem
+tls-auth /etc/openvpn/ta.key 0
 cipher AES-256-CBC
-user nobody
-group nogroup
 persist-key
 persist-tun
 status openvpn-status.log
 log-append /var/log/openvpn.log
 verb 3
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS ${DNS}"
 EOF
 
-  # Adicionar configurações extras
-  echo "Configurando o OpenVPN..."
+  # Ativação e início do OpenVPN
+  systemctl enable openvpn@server
+  systemctl start openvpn@server
 
-  cat <<EOF >> /etc/openvpn/server.conf
-float
-cipher AES-256-CBC
-comp-lzo yes
-user nobody
-group nogroup
-persist-key
-persist-tun
-status openvpn-status.log
-management localhost 7505
-verb 3
-crl-verify crl.pem
-client-to-client
-client-cert-not-required
-username-as-common-name
-plugin $(find /usr -type f -name 'openvpn-plugin-auth-pam.so') login
-duplicate-cn
-EOF
-
-  # Habilitar o redirecionamento de pacotes IPv4
-  sed -i '/\<net.ipv4.ip_forward\>/c\net.ipv4.ip_forward=1' /etc/sysctl.conf
-  if ! grep -q "\<net.ipv4.ip_forward\>" /etc/sysctl.conf; then
-      echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
-  fi
-  echo 1 > /proc/sys/net/ipv4/ip_forward
-
-  # Configuração do RCLocal se necessário
-  if [[ "$OS" = 'debian' && ! -e $RCLOCAL ]]; then
-      echo '#!/bin/sh -e
-  exit 0' > $RCLOCAL
-  fi
-  chmod +x $RCLOCAL
-
-  # Configuração de regras do IPTables
-  iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -j SNAT --to $IP
-  sed -i "1 a\iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -j SNAT --to $IP" $RCLOCAL
-
-  # Configuração do FirewallD se presente
-  if pgrep firewalld; then
-      firewall-cmd --zone=public --add-port=$PORT/$PROTOCOL
-      firewall-cmd --zone=trusted --add-source=10.8.0.0/24
-      firewall-cmd --permanent --zone=public --add-port=$PORT/$PROTOCOL
-      firewall-cmd --permanent --zone=trusted --add-source=10.8.0.0/24
-  fi
-
-  # Ajuste de regras adicionais de IPTables se necessário
-  if iptables -L -n | grep -qE 'REJECT|DROP'; then
-      iptables -I INPUT -p $PROTOCOL --dport $PORT -j ACCEPT
-      iptables -I FORWARD -s 10.8.0.0/24 -j ACCEPT
-      iptables -F
-      iptables -I FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
-      sed -i "1 a\iptables -I INPUT -p $PROTOCOL --dport $PORT -j ACCEPT" $RCLOCAL
-      sed -i "1 a\iptables -I FORWARD -s 10.8.0.0/24 -j ACCEPT" $RCLOCAL
-      sed -i "1 a\iptables -I FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT" $RCLOCAL
-  fi
-
-  # Configuração do SELinux se necessário
-  if hash sestatus 2>/dev/null; then
-      if sestatus | grep "Current mode" | grep -qs "enforcing"; then
-          if [[ "$PORT" != '1194' || "$PROTOCOL" = 'tcp' ]]; then
-              if ! hash semanage 2>/dev/null; then
-                  yum install policycoreutils-python -y
-              fi
-              semanage port -a -t openvpn_port_t -p $PROTOCOL $PORT
-          fi
-      fi
-  fi
-
-  # Reiniciar o OpenVPN
-  fun_ropen() {
-      [[ "$OS" = 'debian' ]] && {
-          if pgrep systemd-journal; then
-              systemctl restart openvpn@server.service
-          else
-              /etc/init.d/openvpn restart
-          fi
-      } || {
-          if pgrep systemd-journal; then
-              systemctl restart openvpn@server.service
-              systemctl enable openvpn@server.service
-          else
-              service openvpn restart
-              chkconfig openvpn on
-          fi
-      }
-  }
-
-  echo "Reiniciando o OpenVPN..."
-  fun_ropen
-
-  # Verificar e ajustar o IP se necessário
-  IP2=$(wget -4qO- "http://whatismyip.akamai.com/")
-  if [[ "$IP" != "$IP2" ]]; then
-      IP="$IP2"
-  fi
-
-  # Configuração do arquivo de cliente
-  [[ $(grep -wc 'open.py' /etc/autostart) != '0' ]] && pt_proxy=$(grep -w 'open.py' /etc/autostart | cut -d' ' -f6) || pt_proxy=80
-  cat <<-EOF >/etc/openvpn/client-common.txt
-  client
-  dev tun
-  proto $PROTOCOL
-  sndbuf 0
-  rcvbuf 0
-  remote $IP $PORT
-  http-proxy $IP $pt_proxy
-  resolv-retry 5
-  nobind
-  persist-key
-  persist-tun
-  remote-cert-tls server
-  cipher AES-256-CBC
-  comp-lzo yes
-  setenv opt block-outside-dns
-  key-direction 1
-  verb 3
-  auth-user-pass
-  keepalive 10 120
-  float
-EOF
-
-  # Gerar client.ovpn
-  newclient "SSHPLUS"
-
-  # Verificação final
-  if [[ "$(netstat -nplt | grep -wc 'openvpn')" != '0' ]]; then
-      echo -e "\n\033[1;32mOPENVPN INSTALADO COM SUCESSO\033[0m"
-  else
-      echo -e "\n\033[1;31mERRO! A INSTALAÇÃO FALHOU\033[0m"
-  fi
-
-  # Configurações adicionais no RC.local
-  sed -i '$ i\echo 1 > /proc/sys/net/ipv4/ip_forward' /etc/rc.local
-  sed -i '$ i\echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6' /etc/rc.local
-  sed -i '$ i\iptables -A INPUT -p tcp --dport 25 -j DROP' /etc/rc.local
-  sed -i '$ i\iptables -A INPUT -p tcp --dport 110 -j DROP' /etc/rc.local
-  sed -i '$ i\iptables -A OUTPUT -p tcp --dport 25 -j DROP' /etc/rc.local
-  sed -i '$ i\iptables -A OUTPUT -p tcp --dport 110 -j DROP' /etc/rc.local
-  sed -i '$ i\iptables -A FORWARD -p tcp --dport 25 -j DROP' /etc/rc.local
-  sed -i '$ i\iptables -A FORWARD -p tcp --dport 110 -j DROP' /etc/rc.local
+  echo "OpenVPN instalado e configurado com sucesso!"
 }
 
-# Exibe o menu
-while true; do
-  show_menu
-done
+# Mostrar o menu
+show_menu
